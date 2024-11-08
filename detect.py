@@ -13,12 +13,21 @@ import re
 # from boilerpy3 import extractors
 # from underthesea import lang_detect
 import Levenshtein
+import logging
+from concurrent.futures import ThreadPoolExecutor
 
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Optional: create a custom logger
+logger = logging.getLogger(__name__)
 # keyword list
 keyword_list = ["accept", "decline", "cookies", "privacy"]
 threshold_score = 0.2
 
 model = YOLO("model_epoch_64.pt")
+global_driver = None
 
 def detect_banner(image_string):
   # Load the image
@@ -71,10 +80,10 @@ def detect_banner(image_string):
 
   if result_detection.any() and top_score > 0.2:
     # Create a window to display the detected object
-    cv2.imshow('Detected Object', result_detection)
-    # matching_element = get_bounding_boxes("https://misa.vn/", result_text, result_width, result_height)
-    # print("real value: ", matching_element.rect)
-    # print("id: ", matching_element.get_attribute("id"))
+    # cv2.imshow('Detected Object', result_detection)
+    matching_element = get_bounding_boxes("https://stackoverflow.com/", result_text, result_width, result_height)
+    print("real value: ", matching_element.rect)
+    print("id: ", matching_element.get_attribute("id"))
     # Wait for a key press to close the window
     # cv2.waitKey(0)
     cv2.destroyAllWindows()
@@ -138,6 +147,7 @@ def get_bounding_boxes(url, target_text, target_width, target_height):
         rect = element.rect
         text = element.text
         if is_within_tolerance(rect['width'], rect['height'], target_width, target_height) and is_matching_text(target_text, text):
+          logger.info("Found matching element")
           matching_element = element
           print(matching_element.rect)
           break
@@ -150,6 +160,35 @@ def get_bounding_boxes(url, target_text, target_width, target_height):
     return matching_element
 
 
-detect_banner("/home/quangle2/Desktop/paper/cookiebannerdetection/images/gucci.png")
+# detect_banner("/home/quangle2/Desktop/paper/cookiebannerdetection/images/misa.png")
 # url = "https://stackoverflow.com/"
 # get_bounding_boxes(url, text_target)
+
+def start_driver():
+    driver = webdriver.Chrome(ChromeDriverManager().install())  # Replace with your preferred webdriver
+    return driver
+
+def save_screenshot(driver, path):
+    """Save a screenshot with the given driver."""
+    driver.maximize_window()
+    time.sleep(2)  # Optional: ensure page is fully loaded
+    driver.save_screenshot(path)
+    logger.info("Screenshot saved at: " + path)
+
+def detect_violations(website_url):
+    global_driver = start_driver()
+    global_driver.get(website_url)
+    
+    screenshot_path = "./images/" + "test" + ".png"
+    logger.info("Adding image to path: " + screenshot_path)
+
+    # Use a ThreadPoolExecutor to save the screenshot in a separate thread
+    with ThreadPoolExecutor() as executor:
+        future = executor.submit(save_screenshot, global_driver, screenshot_path)
+        
+        # Wait until the screenshot-saving process is complete
+        future.result()  # This will block until the screenshot is saved
+
+    # Now call detect_banner only after screenshot is guaranteed to be saved
+    detect_banner(screenshot_path)
+    logger.info("Detection finished")
